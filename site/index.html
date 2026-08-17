@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ilhas de Pedra do Vale do Jamari</title>
+<meta name="description" content="Uma experiência geoespacial sobre as milhares de ilhas de pedra — domos de granito — do Vale do Jamari, Rondônia.">
+<meta property="og:title" content="Ilhas de Pedra do Vale do Jamari">
+<meta property="og:description" content="Pedras tão antigas quanto a crosta da Terra. Um mapa imersivo das milhares de ilhas de pedra ao redor de Ariquemes, Rondônia.">
+<meta property="og:image" content="https://www.ecotono.xyz/ilhasdepedra/media/IMG_8941.jpeg">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.ecotono.xyz/ilhasdepedra/">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪨</text></svg>">
+<link rel="preconnect" href="https://cameratopo.pedalhidrografi.co">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+<style>
+:root{
+  --ink:#fff; --ground:#120c16; --panel:rgba(19,12,22,.94); --line:rgba(255,255,255,.14);
+  --muted:rgba(255,255,255,.66); --faint:rgba(255,255,255,.42);
+  --pink:#ff4fa0; --amber:#ffc95e; --cyan:#39d8d0;
+  --display:'Quicksand',system-ui,sans-serif;
+  --ui:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 var(--ui);overflow:hidden;
+  -webkit-font-smoothing:antialiased}
+#map{position:absolute;inset:0;background:var(--ground)}
+#map canvas{cursor:default}
+a{color:var(--pink)}
+button{font-family:inherit}
+
+/* ---------- brand / chrome ---------- */
+#brand{position:absolute;top:max(12px,env(safe-area-inset-top));left:14px;z-index:30;
+  background:none;border:0;color:#fff;cursor:pointer;text-align:left;padding:6px 8px;
+  font-family:var(--display);text-shadow:0 1px 10px rgba(0,0,0,.7)}
+#brand b{display:block;font-size:17px;font-weight:700;letter-spacing:.02em;line-height:1.1}
+#brand span{font-size:12px;font-weight:600;color:rgba(255,255,255,.85)}
+#brand:hover span{color:var(--pink)}
+
+#basemaps{position:absolute;left:14px;bottom:max(14px,env(safe-area-inset-bottom));z-index:30;
+  display:flex;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:99px;
+  padding:4px;box-shadow:0 6px 24px rgba(0,0,0,.5);backdrop-filter:blur(6px)}
+#basemaps button{border:0;background:none;color:var(--muted);font:600 12.5px var(--display);
+  padding:7px 14px;border-radius:99px;cursor:pointer;letter-spacing:.03em}
+#basemaps button[aria-pressed="true"]{background:#fff;color:#14101a}
+
+#south{position:absolute;right:14px;bottom:calc(max(14px,env(safe-area-inset-bottom)) + 34px);
+  z-index:30;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);
+  background:var(--panel);color:#fff;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.5);
+  font:700 15px var(--display);backdrop-filter:blur(6px)}
+#south .rose{display:inline-block;transition:transform .2s}
+#south .rose i{display:block;font-style:normal;line-height:1}
+#south .rose i.arrow{font-size:11px;margin-top:-3px}
+
+#hoverchip{position:absolute;z-index:40;pointer-events:none;display:none;
+  background:rgba(12,8,15,.92);border:1px solid var(--line);border-radius:8px;
+  padding:5px 9px;font:600 12px var(--display);color:#fff;white-space:nowrap;
+  box-shadow:0 4px 16px rgba(0,0,0,.5)}
+#hoverchip small{color:var(--amber);font-weight:600}
+
+/* ---------- detail panel ---------- */
+#panel{position:absolute;top:max(12px,env(safe-area-inset-top));right:12px;z-index:35;
+  width:min(400px,calc(100vw - 24px));max-height:calc(100% - 24px);overflow-y:auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:16px;
+  box-shadow:0 16px 48px rgba(0,0,0,.6);backdrop-filter:blur(10px);display:none}
+#panel.on{display:block}
+#panel .close{position:absolute;top:9px;right:9px;z-index:2;width:32px;height:32px;
+  border-radius:50%;border:0;background:rgba(10,6,12,.65);color:#fff;font-size:17px;
+  cursor:pointer;line-height:1}
+#panel .close:hover{background:var(--pink)}
+#panel figure{margin:0;background:#000;border-radius:16px 16px 0 0;overflow:hidden;line-height:0}
+#panel figure img,#panel figure video{width:100%;max-height:48vh;object-fit:contain;display:block}
+#panel .body{padding:16px 18px 18px}
+#panel .eyebrow{margin:0 0 4px;font:700 10.5px var(--display);letter-spacing:.16em;
+  text-transform:uppercase;color:var(--pink)}
+#panel h3{margin:0 0 2px;font:700 21px/1.15 var(--display);letter-spacing:.01em}
+#panel .place{margin:0 0 10px;font:600 12.5px var(--display);color:var(--amber)}
+#panel .story{margin:10px 0 4px;font:500 14.5px/1.6 var(--display);color:rgba(255,255,255,.92)}
+#panel .story.todo{color:var(--faint);font-style:italic}
+#panel table{width:100%;border-collapse:collapse;margin-top:12px;
+  font:12.5px/1.5 var(--mono);font-variant-numeric:tabular-nums}
+#panel td{padding:5px 0;border-top:1px solid var(--line);vertical-align:top}
+#panel td:first-child{color:var(--faint);font-family:var(--ui);font-size:12px;padding-right:12px;white-space:nowrap}
+#panel td:last-child{text-align:right}
+#panel .pbar{height:5px;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden;margin:12px 0 4px}
+#panel .pbar i{display:block;height:100%;background:linear-gradient(90deg,var(--amber),var(--pink))}
+#panel .pnote{font-size:11px;color:var(--faint);margin:0}
+#panel nav{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+#panel nav button{border:1px solid var(--line);background:none;color:#fff;cursor:pointer;
+  font:600 12.5px var(--display);padding:8px 13px;border-radius:99px}
+#panel nav button:hover{border-color:var(--pink);color:var(--pink)}
+#panel nav .pos{font:600 11.5px var(--mono);color:var(--faint)}
+#panel .actions{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+#panel .actions button{border:1px solid var(--line);background:none;color:var(--muted);
+  cursor:pointer;font:600 12px var(--display);padding:7px 12px;border-radius:99px}
+#panel .actions button:hover{border-color:var(--amber);color:var(--amber)}
+
+/* ---------- media markers ---------- */
+/* the .mk root is positioned by maplibre (absolute + per-frame transform) —
+   it must carry no transform transition nor a position override, or markers
+   drift off their spot. All styling/animation lives on the inner .face. */
+.mk{width:40px;height:40px;cursor:pointer}
+body.intro-open .mk{visibility:hidden;pointer-events:none}
+.mk .face{position:absolute;inset:0;border-radius:50%;border:2.5px solid #fff;
+  background:#000 center/cover no-repeat;box-shadow:0 2px 12px rgba(0,0,0,.65);
+  transition:transform .15s,border-color .15s}
+.mk:hover .face{transform:scale(1.14)}
+.mk.sel .face{border-color:var(--pink);transform:scale(1.14)}
+.mk .play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:13px;text-shadow:0 1px 4px #000;background:rgba(0,0,0,.25);border-radius:50%}
+
+/* ---------- overlays ---------- */
+.veil{position:absolute;inset:0;z-index:50;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;padding:24px;
+  background:linear-gradient(180deg,rgba(10,5,14,.55),rgba(10,5,14,.12) 30%,rgba(10,5,14,.12) 62%,rgba(10,5,14,.72));
+  opacity:1;transition:opacity .9s}
+.veil.off{opacity:0;pointer-events:none}
+#intro h1{margin:0;font-family:var(--display);font-weight:700;letter-spacing:.015em;
+  font-size:clamp(40px,9vw,86px);line-height:.98;text-shadow:0 2px 24px rgba(0,0,0,.55)}
+#intro h1 small{display:block;font-size:clamp(20px,4.2vw,40px);font-weight:600;letter-spacing:.02em}
+#intro .poem{max-width:560px;margin:26px 0 0;font:600 clamp(15px,2.2vw,19px)/1.55 var(--display);
+  color:rgba(255,255,255,.95);text-shadow:0 1px 12px rgba(0,0,0,.7)}
+#intro .go{margin-top:30px;border:2px solid #fff;background:rgba(10,5,14,.25);color:#fff;
+  font:700 16px var(--display);letter-spacing:.05em;padding:13px 30px;border-radius:99px;
+  cursor:pointer;transition:background .2s,color .2s;backdrop-filter:blur(3px)}
+#intro .go:hover{background:#fff;color:#14101a}
+#intro .credits{position:absolute;bottom:max(18px,env(safe-area-inset-bottom));left:0;right:0;
+  font:600 12px var(--display);color:rgba(255,255,255,.8);text-shadow:0 1px 8px rgba(0,0,0,.8)}
+#intro .credits b{letter-spacing:.06em}
+
+#about{z-index:60;background:rgba(8,5,12,.7);backdrop-filter:blur(4px);display:none}
+#about.on{display:flex}
+#about .card{position:relative;max-width:640px;max-height:calc(100% - 48px);overflow-y:auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:34px 36px;
+  text-align:left;box-shadow:0 24px 80px rgba(0,0,0,.7)}
+#about h2{margin:0 0 4px;font:700 26px/1.1 var(--display)}
+#about h2 small{display:block;font-size:15px;font-weight:600;color:var(--muted)}
+#about h4{margin:22px 0 6px;font:700 11px var(--display);letter-spacing:.16em;
+  text-transform:uppercase;color:var(--pink)}
+#about p{margin:0 0 10px;font:500 14.5px/1.65 var(--display);color:rgba(255,255,255,.9)}
+#about .poem{font-weight:600;color:#fff}
+#about .fine{font-size:12.5px;color:var(--muted)}
+#about .close{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:50%;
+  border:0;background:rgba(255,255,255,.1);color:#fff;font-size:17px;cursor:pointer}
+#about .close:hover{background:var(--pink)}
+
+/* ---------- mobile ---------- */
+@media (max-width:640px){
+  #panel{top:auto;bottom:0;right:0;left:0;width:100%;max-height:68vh;
+    border-radius:18px 18px 0 0;border-left:0;border-right:0;border-bottom:0}
+  #panel figure{border-radius:18px 18px 0 0}
+  #panel figure img,#panel figure video{max-height:34vh}
+  #basemaps{bottom:auto;top:max(12px,env(safe-area-inset-top));left:auto;right:12px}
+  #south{display:none}
+  #about .card{padding:26px 22px;border-radius:16px}
+}
+@media (prefers-reduced-motion:reduce){
+  .veil{transition:none}
+}
+</style>
+</head>
+<body class="intro-open">
+<div id="map"></div>
+<div id="hoverchip"></div>
+
+<button id="brand" title="sobre o projeto">
+  <b>ilhas de pedra</b><span>do vale do jamari</span>
+</button>
+
+<div id="basemaps" role="group" aria-label="mapa base">
+  <button data-b="relevo" aria-pressed="true">relevo</button>
+  <button data-b="sat" aria-pressed="false">satélite</button>
+</div>
+
+<button id="south" title="voltar o norte para cima">
+  <span class="rose"><i>S</i><i class="arrow">↓</i></span>
+</button>
+
+<aside id="panel" aria-live="polite"></aside>
+
+<div id="intro" class="veil">
+  <h1>ILHAS DE PEDRA<small>do Vale do Jamari</small></h1>
+  <p class="poem">Pedras tão antigas quanto a crosta da Terra.<br>
+    Que nasceram tão quentes quanto o maior calor do mundo.</p>
+  <button class="go" id="go">explorar o vale</button>
+  <p class="credits"><b>ecótono</b> micro-editora · Danilo Lessa Bernardineli &amp; Paula Pedrosa</p>
+</div>
+
+<div id="about" class="veil">
+  <div class="card">
+    <button class="close" id="about-close" aria-label="fechar">×</button>
+    <h2>Ilhas de Pedra<small>do Vale do Jamari</small></h2>
+
+    <h4>paisagens de exceção</h4>
+    <p class="poem">Ilhas de pedra irrompem em meio às fazendas e matas.
+      Pedras tão antigas quanto a crosta da Terra. Que nasceram tão quentes
+      quanto o maior calor do mundo. Deslocam a percepção. Conversam sobre o
+      que foi e o que virá. Linguagem que fala com brutalidade e também com
+      delicadeza. Abrigam espinhos e flores, raios e torres.
+      Refúgios de histórias.</p>
+
+    <h4>o que você está vendo</h4>
+    <p>Ao redor de Ariquemes (RO), milhares de domos de granito —
+      <i>inselbergs</i>, ou como se diz por aqui, <b>ilhas de pedra</b> —
+      saltam do terreno plano. Cada ponto escuro no mapa é um indício forte
+      de uma ilha, detectado pela forma do relevo; cada um tem um número,
+      sua identidade no inventário. Alguns foram visitados e confirmados em
+      campo. Na ordem de <b>7&nbsp;mil ilhas</b> nas bacias dos rios Jamari e
+      Jaru — cerca de uma a cada 5&nbsp;km² — e uma estimativa de
+      19 a 31&nbsp;mil em toda a região.</p>
+    <p>As fotos e vídeos no mapa foram feitos nos pés e nos cumes das pedras.
+      O cone claro que sai de cada foto mostra a direção do olhar da câmera.</p>
+
+    <h4>o mapa</h4>
+    <p class="fine">O relevo é o modelo digital FABDEM (30&nbsp;m), pintado com uma
+      paleta cíclica de cores e escurecido pela declividade — encostas
+      íngremes ficam pretas, e as ilhas aparecem como glóbulos escuros.
+      A detecção é morfométrica (transformada top-hat) refinada por
+      aprendizado de máquina e revisão manual; os pontos são indícios, não
+      um cadastro definitivo. Fontes: FABDEM © University of Bristol;
+      bacias ANA/BHO; hidrografia derivada do relevo; vias ©
+      colaboradores do OpenStreetMap; imagens de satélite © Esri.</p>
+
+    <h4>ficha técnica</h4>
+    <p class="fine"><b>fotos</b> Danilo Lessa Bernardineli e Paula Pedrosa ·
+      <b>textos</b> Paula Pedrosa, Danilo Lessa Bernardineli, Matheus Dalla Vechia ·
+      <b>mapas</b> Danilo Lessa Bernardineli ·
+      <b>edição e projeto gráfico</b> Paula Pedrosa ·
+      <b>ecótono</b> micro-editora</p>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------------- config ---------------- */
+var RELEVO = "https://cameratopo.pedalhidrografi.co/{z}/{x}/{y}.png"
+  + "?elevMin=80&elevMax=350&slopeMax=0.5&slopeGamma=1&cycles=1&dem=ee&ss=512";
+var SAT = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+var HOME = {center:[-63.15,-9.88], zoom:7.4, pitch:0, bearing:0};
+var ARIQUEMES = {center:[-63.041,-9.913], zoom:11.4, pitch:52, bearing:-18};
+var RM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+var map = new maplibregl.Map({
+  container:"map",
+  center:HOME.center, zoom:HOME.zoom,
+  minZoom:6, maxZoom:16.5,
+  maxBounds:[[-66.4,-13.0],[-60.0,-6.8]],
+  attributionControl:false,
+  style:{
+    version:8,
+    glyphs:"https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
+    sources:{
+      relevo:{type:"raster", tiles:[RELEVO], tileSize:256, maxzoom:15,
+        attribution:"relevo <a href='https://cameratopo.pedalhidrografi.co' target='_blank'>cameratopo</a> · FABDEM © University of Bristol"},
+      sat:{type:"raster", tiles:[SAT], tileSize:256, maxzoom:17,
+        attribution:"imagens © Esri, Maxar, Earthstar Geographics"},
+      ilhas:{type:"geojson", data:"data/ilhas.geojson", promoteId:"iid"},
+      streams:{type:"geojson", data:"data/streams.geojson"},
+      rivers:{type:"geojson", data:"data/rivers.geojson"},
+      roads:{type:"geojson", data:"data/roads.geojson"},
+      basins:{type:"geojson", data:"data/basins.geojson"},
+      places:{type:"geojson", data:"data/places.geojson"},
+      cones:{type:"geojson", data:{type:"FeatureCollection",features:[]}},
+      terrain:{type:"raster-dem", tiles:["data/terrain/{z}/{x}/{y}.png"],
+        tileSize:256, encoding:"terrarium", minzoom:6, maxzoom:12,
+        bounds:[-64.6,-11.4,-61.9,-8.4],
+        attribution:"terreno FABDEM (Hawker et al. 2022)"}
+    },
+    terrain:{source:"terrain", exaggeration:1.6},
+    layers:[
+      {id:"bg", type:"background", paint:{"background-color":"#120c16"}},
+      {id:"base-relevo", type:"raster", source:"relevo",
+        paint:{"raster-fade-duration":180}},
+      {id:"base-sat", type:"raster", source:"sat", layout:{visibility:"none"}},
+
+      {id:"basins", type:"line", source:"basins",
+        paint:{"line-color":"#ffffff","line-opacity":0.32,"line-width":1.1,
+               "line-dasharray":[3,3]}},
+
+      {id:"streams", type:"line", source:"streams",
+        layout:{"line-cap":"round","line-join":"round"},
+        paint:{
+          "line-color":"#ffc95e",
+          "line-opacity":["interpolate",["linear"],["zoom"],7,0.35,11,0.5],
+          "line-width":["interpolate",["exponential",1.6],["zoom"],
+            7,["*",0.14,["-",["get","strahler"],4]],
+            13,["*",1.1,["-",["get","strahler"],4]]]}},
+
+      {id:"rivers", type:"line", source:"rivers",
+        layout:{"line-cap":"round","line-join":"round"},
+        paint:{
+          "line-color":"#ffb14e","line-opacity":0.75,
+          "line-width":["interpolate",["exponential",1.6],["zoom"],7,1.1,13,4]}},
+
+      {id:"roads", type:"line", source:"roads",
+        paint:{
+          "line-color":"#ffffff",
+          "line-opacity":["match",["get","cls"],"secondary",0.3,0.55],
+          "line-width":["interpolate",["exponential",1.6],["zoom"],
+            7,["match",["get","cls"],"secondary",0.3,0.7],
+            13,["match",["get","cls"],"secondary",1.2,2.4]]}},
+
+      {id:"cone-fill", type:"fill", source:"cones",
+        paint:{"fill-color":"#ffffff",
+               "fill-opacity":["interpolate",["linear"],["zoom"],
+                 9,0.0, 10.5,["get","o"]]}},
+      {id:"cone-edge", type:"line", source:"cones",
+        filter:["==",["get","edge"],1],
+        paint:{"line-color":"#ffffff","line-width":1,
+               "line-opacity":["interpolate",["linear"],["zoom"],9,0,10.5,0.4]}},
+
+      {id:"ilhas-dots", type:"circle", source:"ilhas",
+        paint:{
+          "circle-radius":["interpolate",["linear"],["zoom"],
+            6,0.7, 9,["+",1.2,["*",1.2,["get","p"]]],
+            12,["+",2.4,["*",2,["get","p"]]], 15,7],
+          "circle-color":"rgba(14,9,16,0.72)",
+          "circle-stroke-color":["case",
+            ["boolean",["feature-state","sel"],false],"#ff4fa0",
+            "#ffffff"],
+          "circle-stroke-width":["interpolate",["linear"],["zoom"],
+            8,["case",
+              ["boolean",["feature-state","sel"],false],2.2,
+              ["boolean",["feature-state","hover"],false],1.8,
+              ["==",["get","conf"],1],0.6, 0],
+            10.5,["case",
+              ["boolean",["feature-state","sel"],false],2.2,
+              ["boolean",["feature-state","hover"],false],1.8,
+              ["==",["get","conf"],1],1.0, 0],
+            12,["case",
+              ["boolean",["feature-state","sel"],false],2.2,
+              ["boolean",["feature-state","hover"],false],1.8,
+              ["==",["get","conf"],1],1.4, 0.7]],
+          "circle-stroke-opacity":["case",
+            ["boolean",["feature-state","sel"],false],1,
+            ["boolean",["feature-state","hover"],false],0.95,0.8]}},
+
+      {id:"ilhas-ids", type:"symbol", source:"ilhas", minzoom:12.8,
+        layout:{
+          "text-field":["concat","#",["to-string",["get","iid"]]],
+          "text-font":["Open Sans Regular"],
+          "text-size":10.5,"text-offset":[0,1.2],"text-anchor":"top"},
+        paint:{"text-color":"rgba(255,255,255,0.92)",
+               "text-halo-color":"rgba(10,6,12,0.75)","text-halo-width":1.1}},
+
+      {id:"river-names", type:"symbol", source:"rivers", minzoom:8,
+        layout:{
+          "symbol-placement":"line",
+          "text-field":["get","name"],
+          "text-font":["Open Sans Italic"],
+          "text-size":["interpolate",["linear"],["zoom"],8,11,13,15],
+          "text-letter-spacing":0.06},
+        paint:{"text-color":"#ffd27a",
+               "text-halo-color":"rgba(20,10,5,0.85)","text-halo-width":1.3}},
+
+      {id:"serra-names", type:"symbol", source:"places", minzoom:7.6, maxzoom:13,
+        filter:["==",["get","kind"],"serra"],
+        layout:{
+          "text-field":["get","name"],
+          "text-font":["Open Sans Bold Italic"],
+          "text-size":["interpolate",["linear"],["zoom"],8,12,12,16],
+          "text-letter-spacing":0.05,"text-max-width":14},
+        paint:{"text-color":"#ff4fa0",
+               "text-halo-color":"rgba(12,6,10,0.8)","text-halo-width":1.4}},
+
+      {id:"city-names", type:"symbol", source:"places",
+        filter:["==",["get","kind"],"city"],
+        minzoom:0,
+        layout:{
+          "text-field":["downcase",["get","name"]],
+          "text-font":["Open Sans Bold"],
+          "text-size":["interpolate",["linear"],["zoom"],
+            6,["case",["==",["get","rank"],1],13,10],
+            11,["case",["==",["get","rank"],1],17,13],
+            12.5,["case",["==",["get","rank"],1],17.5,14.5]],
+          "text-letter-spacing":0.09,
+          "text-variable-anchor":["center","top","bottom","left","right"],
+          "text-radial-offset":0.5,"text-justify":"auto",
+          "text-padding":6},
+        paint:{"text-color":"#ffffff",
+               "text-halo-color":"rgba(10,6,12,0.8)","text-halo-width":1.4,
+               "text-opacity":["interpolate",["linear"],["zoom"],
+                 8.2,["case",["==",["get","rank"],1],1,0],
+                 8.8,1]}}
+    ]
+  }
+});
+map.addControl(new maplibregl.AttributionControl({compact:true}), "bottom-right");
+map.touchPitch.enable();
+
+/* rank-2 cities only appear from z8.2 — handled by text-opacity above */
+
+/* ---------------- helpers ---------------- */
+function fly(opts){
+  if(RM){ map.jumpTo(opts); }
+  else{ map.flyTo(Object.assign({essential:true}, opts)); }
+}
+function fmtCoord(lat,lon){
+  return Math.abs(lat).toFixed(5)+"° S · "+Math.abs(lon).toFixed(5)+"° O";
+}
+function fmtDate(dt){
+  if(!dt) return null;
+  var m = dt.match(/^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2})/);
+  if(!m) return dt;
+  var meses = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+  return (+m[3])+" "+meses[+m[2]-1]+" "+m[1]+", "+m[4]+"h"+m[5];
+}
+function cardinal(deg){
+  var pts = ["N","NNE","NE","ENE","L","ESE","SE","SSE","S","SSO","SO","OSO","O","ONO","NO","NNO"];
+  return pts[Math.round(deg/22.5)%16];
+}
+
+/* sector polygon: camera FOV cone */
+function sector(lon,lat,heading,hfov,r){
+  var pts = [[lon,lat]];
+  var n = 22;
+  var mLat = 111320, mLon = 111320*Math.cos(lat*Math.PI/180);
+  for(var i=0;i<=n;i++){
+    var a = (heading - hfov/2 + hfov*i/n) * Math.PI/180;
+    pts.push([lon + r*Math.sin(a)/mLon, lat + r*Math.cos(a)/mLat]);
+  }
+  pts.push([lon,lat]);
+  return pts;
+}
+function buildCones(items){
+  var feats = [];
+  items.forEach(function(m){
+    if(m.heading == null) return;
+    var hfov = m.hfov || 58;
+    [[620,0.09,1],[400,0.13,0],[205,0.20,0]].forEach(function(t){
+      feats.push({type:"Feature",
+        properties:{o:t[1], edge:t[2], mid:m.id},
+        geometry:{type:"Polygon",
+          coordinates:[sector(m.lon,m.lat,m.heading,hfov,t[0])]}});
+    });
+  });
+  return {type:"FeatureCollection",features:feats};
+}
+
+/* ---------------- state ---------------- */
+var media = [], markers = {}, selMedia = null, selIlha = null, hoverIlha = null;
+var panel = document.getElementById("panel");
+var hoverchip = document.getElementById("hoverchip");
+
+/* ---------------- media ---------------- */
+fetch("data/media.json").then(function(r){return r.json()}).then(function(items){
+  items.sort(function(a,b){ return (a.datetime||"") < (b.datetime||"") ? -1 : 1; });
+  media = items;
+  if(map.isStyleLoaded()) map.getSource("cones").setData(buildCones(items));
+  else map.once("load", function(){ map.getSource("cones").setData(buildCones(items)); });
+
+  items.forEach(function(m){
+    var el = document.createElement("div");
+    el.className = "mk";
+    el.setAttribute("role","button");
+    el.setAttribute("aria-label", m.title || m.id);
+    var face = document.createElement("div");
+    face.className = "face";
+    face.style.backgroundImage = "url('media/"+(m.poster||m.file)+"')";
+    if(m.type==="video") face.innerHTML = '<span class="play">▶</span>';
+    el.appendChild(face);
+    el.addEventListener("click", function(e){
+      e.stopPropagation(); openMedia(m);
+    });
+    markers[m.id] = new maplibregl.Marker({element:el})
+      .setLngLat([m.lon,m.lat]).addTo(map);
+  });
+
+  var h = location.hash.match(/^#m\/(.+)$/);
+  if(h){
+    var m0 = items.find(function(x){return x.id===h[1]});
+    if(m0){ dismissIntro(false); openMedia(m0); }
+  }
+}).catch(function(e){ console.warn("media", e); });
+
+function openMedia(m){
+  clearIlha();
+  if(selMedia && markers[selMedia.id]) markers[selMedia.id].getElement().classList.remove("sel");
+  selMedia = m;
+  markers[m.id].getElement().classList.add("sel");
+  history.replaceState(null,"","#m/"+m.id);
+
+  var i = media.indexOf(m);
+  var mediaEl = m.type==="video"
+    ? '<video controls playsinline poster="media/'+m.poster+'" src="media/'+m.file+'"></video>'
+    : '<img src="media/'+m.file+'" alt="'+(m.title||m.id)+'">';
+  var rows = [];
+  if(m.datetime) rows.push(["quando", fmtDate(m.datetime)]);
+  if(m.camera) rows.push(["câmera", m.camera]);
+  if(m.heading!=null) rows.push(["olhando para", cardinal(m.heading)+" ("+Math.round(m.heading)+"°)"]);
+  if(m.alt) rows.push(["altitude", Math.round(m.alt)+" m"]);
+  rows.push(["onde", fmtCoord(m.lat,m.lon)]);
+
+  panel.innerHTML =
+    '<button class="close" aria-label="fechar">×</button>'+
+    '<figure>'+mediaEl+'</figure>'+
+    '<div class="body">'+
+      '<p class="eyebrow">'+(m.type==="video"?"vídeo":"registro")+' de campo</p>'+
+      '<h3>'+(m.title || m.id)+'</h3>'+
+      (m.place ? '<p class="place">'+m.place+'</p>' : '')+
+      (m.text ? '<p class="story">'+m.text+'</p>'
+              : '<p class="story todo">história em breve…</p>')+
+      '<table>'+rows.map(function(r){
+        return '<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>';}).join("")+'</table>'+
+      '<nav><button data-nav="-1">‹ anterior</button>'+
+      '<span class="pos">'+(i+1)+' / '+media.length+'</span>'+
+      '<button data-nav="1">seguinte ›</button></nav>'+
+    '</div>';
+  panel.classList.add("on");
+  wirePanel();
+
+  fly({center:[m.lon,m.lat], zoom:14.1, pitch:55,
+       bearing:(m.heading!=null ? m.heading : map.getBearing()),
+       offset:[0,110], duration:2600});
+}
+
+function wirePanel(){
+  panel.querySelector(".close").onclick = closePanel;
+  panel.querySelectorAll("[data-nav]").forEach(function(b){
+    b.onclick = function(){
+      var d = +b.getAttribute("data-nav");
+      openMedia(media[(media.indexOf(selMedia)+d+media.length)%media.length]);
+    };
+  });
+  var sat = panel.querySelector("[data-act='sat']");
+  if(sat) sat.onclick = function(){ setBase("sat"); };
+  panel.scrollTop = 0;
+}
+
+function closePanel(){
+  panel.classList.remove("on");
+  if(selMedia && markers[selMedia.id]) markers[selMedia.id].getElement().classList.remove("sel");
+  selMedia = null;
+  clearIlha();
+  history.replaceState(null,""," "+location.pathname.slice(location.pathname.lastIndexOf("/")+1));
+}
+
+/* ---------------- ilhas interactions ---------------- */
+function clearIlha(){
+  if(selIlha!=null){
+    map.setFeatureState({source:"ilhas", id:selIlha}, {sel:false});
+    selIlha = null;
+  }
+}
+map.on("mousemove","ilhas-dots",function(e){
+  map.getCanvas().style.cursor = "pointer";
+  var f = e.features[0];
+  if(hoverIlha!=null && hoverIlha!==f.id)
+    map.setFeatureState({source:"ilhas", id:hoverIlha}, {hover:false});
+  hoverIlha = f.id;
+  map.setFeatureState({source:"ilhas", id:hoverIlha}, {hover:true});
+  hoverchip.style.display = "block";
+  hoverchip.style.left = (e.point.x+14)+"px";
+  hoverchip.style.top = (e.point.y-12)+"px";
+  hoverchip.innerHTML = "ilha <small>#"+f.properties.iid+"</small>"+
+    (f.properties.conf ? " ✓" : "");
+});
+map.on("mouseleave","ilhas-dots",function(){
+  map.getCanvas().style.cursor = "default";
+  if(hoverIlha!=null) map.setFeatureState({source:"ilhas", id:hoverIlha}, {hover:false});
+  hoverIlha = null;
+  hoverchip.style.display = "none";
+});
+map.on("click","ilhas-dots",function(e){
+  var f = e.features[0];
+  openIlha(f.properties, e.lngLat);
+  e.originalEvent._handled = true;
+});
+map.on("click", function(e){
+  if(e.originalEvent._handled) return;
+  if(!e.defaultPrevented && panel.classList.contains("on")
+     && !selMedia){ /* clicking empty map closes an ilha card */
+    closePanel();
+  }
+});
+
+function openIlha(p, lngLat){
+  if(selMedia && markers[selMedia.id]) markers[selMedia.id].getElement().classList.remove("sel");
+  selMedia = null;
+  clearIlha();
+  selIlha = p.iid;
+  map.setFeatureState({source:"ilhas", id:selIlha}, {sel:true});
+
+  var rows = [
+    ["salta do terreno", "~ "+p.th+" m"],
+    ["desnível na vizinhança", p.rel+" m"],
+    ["altitude do cume", p.smt+" m"],
+    ["onde", fmtCoord(lngLat.lat, lngLat.lng)]
+  ];
+  panel.innerHTML =
+    '<button class="close" aria-label="fechar">×</button>'+
+    '<div class="body">'+
+      '<p class="eyebrow">'+(p.conf ? "vista em campo ✓" : "indício forte")+'</p>'+
+      '<h3>ilha #'+p.iid+'</h3>'+
+      '<table>'+rows.map(function(r){
+        return '<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>';}).join("")+'</table>'+
+      '<div class="pbar"><i style="width:'+Math.round(p.p*100)+'%"></i></div>'+
+      '<p class="pnote">força do indício no detector: '+p.p.toFixed(3)+
+      ' (ranking, não probabilidade)</p>'+
+      '<div class="actions"><button data-act="sat">ver no satélite</button></div>'+
+    '</div>';
+  panel.classList.add("on");
+  wirePanel();
+
+  var z = Math.max(map.getZoom(), 12.6);
+  fly({center:lngLat, zoom:z, duration:1100});
+}
+
+/* ---------------- basemap ---------------- */
+function setBase(b){
+  document.querySelectorAll("#basemaps button").forEach(function(x){
+    x.setAttribute("aria-pressed", x.getAttribute("data-b")===b);
+  });
+  map.setLayoutProperty("base-relevo","visibility", b==="relevo"?"visible":"none");
+  map.setLayoutProperty("base-sat","visibility", b==="sat"?"visible":"none");
+  /* dark globules over relief; white pins over forest imagery */
+  map.setPaintProperty("ilhas-dots","circle-color",
+    b==="sat" ? "rgba(255,255,255,0.28)" : "rgba(14,9,16,0.72)");
+  map.setPaintProperty("streams","line-color", b==="sat" ? "#e8f06a" : "#ffc95e");
+  map.setPaintProperty("rivers","line-color", b==="sat" ? "#e8d94e" : "#ffb14e");
+}
+document.getElementById("basemaps").addEventListener("click", function(e){
+  var btn = e.target.closest("button");
+  if(btn) setBase(btn.getAttribute("data-b"));
+});
+
+/* ---------------- south rose ---------------- */
+var rose = document.querySelector("#south .rose");
+map.on("rotate", function(){
+  rose.style.transform = "rotate("+(-map.getBearing())+"deg)";
+});
+document.getElementById("south").onclick = function(){
+  fly({bearing:0, pitch:0, duration:900});
+};
+
+/* ---------------- intro / about ---------------- */
+var intro = document.getElementById("intro");
+var drifting = false;
+function drift(){
+  if(RM || !document.body.classList.contains("intro-open")) return;
+  drifting = true;
+  map.easeTo({bearing:-7, zoom:HOME.zoom+0.25, duration:60000, easing:function(t){return t}});
+}
+map.once("load", drift);
+
+function dismissIntro(flyIn){
+  if(!document.body.classList.contains("intro-open")) return;
+  document.body.classList.remove("intro-open");
+  intro.classList.add("off");
+  if(drifting) map.stop();
+  if(flyIn!==false)
+    fly(Object.assign({}, ARIQUEMES, {duration:5600, curve:1.3}));
+}
+document.getElementById("go").onclick = function(){ dismissIntro(); };
+
+var about = document.getElementById("about");
+document.getElementById("brand").onclick = function(){ about.classList.add("on"); };
+document.getElementById("about-close").onclick = function(){ about.classList.remove("on"); };
+about.addEventListener("click", function(e){ if(e.target===about) about.classList.remove("on"); });
+
+document.addEventListener("keydown", function(e){
+  if(e.key==="Escape"){
+    if(about.classList.contains("on")) about.classList.remove("on");
+    else if(panel.classList.contains("on")) closePanel();
+  }
+});
+
+/* console handle, também usado pelos testes */
+window.__map = map; window.__setBase = setBase; window.__openIlha = openIlha;
+})();
+</script>
+</body>
+</html>

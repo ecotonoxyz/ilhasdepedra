@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ilhas de Pedra — detections</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{
+  --ground:#0e1014; --panel:#171a20; --panel-2:#1d212a;
+  --ink:#e7e9ee; --muted:#98a0ae; --faint:#6f7788; --line:#262a33;
+  --accent:#e35a99; --yes:#22b394; --no:#d98341; --maybe:#8b93a3;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --ui:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--ground);color:var(--ink);font:14px/1.5 var(--ui);overflow:hidden}
+#map{position:absolute;inset:0;background:#0b0d10}
+.leaflet-container{background:#0b0d10}
+
+.panel{
+  position:absolute;top:12px;left:12px;z-index:900;width:310px;max-height:calc(100% - 24px);
+  overflow-y:auto;background:rgba(23,26,32,.96);border:1px solid var(--line);
+  border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.55);backdrop-filter:blur(8px);
+}
+.pad{padding:13px 15px}
+.hd{border-bottom:1px solid var(--line)}
+.eyebrow{font:600 10px/1 var(--ui);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 6px}
+h1{font:700 17px/1.2 var(--ui);letter-spacing:-.01em;margin:0}
+.tally{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.tag{font:600 11px/1 var(--mono);padding:5px 8px;border-radius:6px;border:1px solid var(--line);background:var(--panel-2);color:var(--muted)}
+.tag b{color:var(--ink)}
+.tag.y b{color:var(--yes)} .tag.n b{color:var(--no)} .tag.m b{color:var(--maybe)}
+
+section{border-bottom:1px solid var(--line)}
+h2{font:600 10px/1 var(--ui);letter-spacing:.13em;text-transform:uppercase;color:var(--faint);margin:0 0 10px}
+label.row{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--muted);margin:0 0 5px}
+label.row b{font:600 12px/1 var(--mono);color:var(--ink);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent);margin:0 0 11px}
+.seg{display:flex;gap:5px;flex-wrap:wrap}
+.seg button{
+  flex:1 1 auto;padding:6px 8px;border-radius:7px;border:1px solid var(--line);
+  background:var(--panel-2);color:var(--muted);font:500 11.5px/1 var(--ui);cursor:pointer;
+}
+.seg button[aria-pressed="true"]{border-color:var(--accent);color:var(--ink);background:rgba(227,90,153,.14)}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+.ramp{height:9px;border-radius:99px;margin:9px 0 5px;
+  background:linear-gradient(90deg,#d98341,#8b93a3,#22b394)}
+.rampx{display:flex;justify-content:space-between;font:600 10px/1 var(--mono);color:var(--faint)}
+
+.detail{
+  position:absolute;top:12px;right:12px;z-index:900;width:392px;max-height:calc(100% - 24px);
+  overflow-y:auto;background:rgba(23,26,32,.96);border:1px solid var(--line);
+  border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.55);backdrop-filter:blur(8px);display:none;
+}
+.detail.on{display:block}
+.chips{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line)}
+.chipbox{position:relative;background:#000;line-height:0}
+.chipbox img{width:100%;aspect-ratio:1;display:block;object-fit:cover}
+.chipbox span{
+  position:absolute;top:6px;left:7px;font:600 9.5px/1 var(--ui);letter-spacing:.09em;
+  text-transform:uppercase;color:#fff;text-shadow:0 1px 3px #000;pointer-events:none;
+}
+.chipbox i.x{position:absolute;left:50%;top:50%;width:15px;height:15px;transform:translate(-50%,-50%);pointer-events:none}
+.chipbox i.x::before,.chipbox i.x::after{content:"";position:absolute;background:rgba(255,255,255,.9);box-shadow:0 0 0 1px rgba(0,0,0,.6)}
+.chipbox i.x::before{left:50%;top:0;width:1px;height:100%;transform:translateX(-50%)}
+.chipbox i.x::after{top:50%;left:0;height:1px;width:100%;transform:translateY(-50%)}
+
+table.kv{width:100%;border-collapse:collapse;font:12px/1.45 var(--mono);font-variant-numeric:tabular-nums}
+table.kv td{padding:4px 0;border-bottom:1px solid var(--line)}
+table.kv td:first-child{color:var(--faint);font-family:var(--ui);font-size:11.5px}
+table.kv td:last-child{text-align:right}
+.pbar{height:6px;border-radius:99px;background:var(--panel-2);overflow:hidden;margin:8px 0 3px}
+.pbar i{display:block;height:100%;background:var(--accent)}
+
+.vote{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.vote button{padding:9px 4px;border-radius:8px;border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);font:600 12px/1 var(--ui);cursor:pointer}
+.vote button.y[aria-pressed="true"]{border-color:var(--yes);color:var(--yes)}
+.vote button.n[aria-pressed="true"]{border-color:var(--no);color:var(--no)}
+.vote button.m[aria-pressed="true"]{border-color:var(--maybe);color:var(--maybe)}
+.vote button:hover{border-color:var(--accent)}
+a.dl{color:var(--accent);font-size:12px}
+.hint{color:var(--faint);font-size:11.5px;margin:8px 0 0}
+.hint kbd{font:600 10px/1 var(--mono);border:1px solid var(--line);border-radius:4px;padding:2px 4px;background:var(--panel-2)}
+.loading{color:var(--faint);font-size:12px;padding:10px 15px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="panel">
+  <div class="pad hd">
+    <p class="eyebrow">FABDEM 30 m · Rondônia</p>
+    <h1>Ilhas de Pedra</h1>
+    <div class="tally">
+      <span class="tag">Shown <b id="t-shown">—</b></span>
+      <span class="tag y">Ilha <b id="t-y">0</b></span>
+      <span class="tag n">Not <b id="t-n">0</b></span>
+      <span class="tag m">Unsure <b id="t-m">0</b></span>
+    </div>
+  </div>
+
+  <section class="pad">
+    <h2>Probability</h2>
+    <label class="row">Minimum p_ilha <b id="v-pmin">0.00</b></label>
+    <input type="range" id="pmin" min="0" max="1" step="0.01" value="0">
+    <label class="row">Maximum p_ilha <b id="v-pmax">1.00</b></label>
+    <input type="range" id="pmax" min="0" max="1" step="0.01" value="1">
+    <div class="ramp"></div>
+    <div class="rampx"><span>0 · not</span><span>0.5</span><span>1 · ilha</span></div>
+  </section>
+
+  <section class="pad">
+    <h2>Morphometry</h2>
+    <label class="row">Top-hat ≥ <b id="v-th">0</b> m</label>
+    <input type="range" id="th" min="30" max="180" step="5" value="30">
+    <label class="row">Relief ≥ <b id="v-rel">0</b> m</label>
+    <input type="range" id="rel" min="0" max="200" step="5" value="0">
+    <label class="row">Ring relief ≤ <b id="v-ring">400</b> m</label>
+    <input type="range" id="ring" min="30" max="400" step="10" value="400">
+  </section>
+
+  <section class="pad">
+    <h2>Review state</h2>
+    <div class="seg" id="lblfilter">
+      <button data-f="all" aria-pressed="true">All</button>
+      <button data-f="none" aria-pressed="false">Unlabelled</button>
+      <button data-f="ilha" aria-pressed="false">Ilha</button>
+      <button data-f="not" aria-pressed="false">Not</button>
+      <button data-f="unsure" aria-pressed="false">Unsure</button>
+    </div>
+    <div class="seg" style="margin-top:6px">
+      <button id="b-batch" aria-pressed="false" style="flex:1 1 100%">Only review batch 2 (400, random sample)</button>
+    </div>
+  </section>
+
+  <section class="pad">
+    <h2>Map click</h2>
+    <div class="seg" id="mode">
+      <button data-m="inspect" aria-pressed="true">Inspect</button>
+      <button data-m="missed" aria-pressed="false">+ Missed ilha</button>
+      <button data-m="notilha" aria-pressed="false">+ Non-ilha</button>
+    </div>
+    <p class="hint" id="modehint">Click a detection to inspect it.</p>
+    <div class="tally" style="margin-top:9px">
+      <span class="tag y">Missed <b id="t-miss">0</b></span>
+      <span class="tag n">Non-ilha <b id="t-nonilha">0</b></span>
+    </div>
+  </section>
+
+  <section class="pad">
+    <h2>Basemap</h2>
+    <div class="seg" id="basemap">
+      <button data-b="topo" aria-pressed="true">Relief</button>
+      <button data-b="sat" aria-pressed="false">Satellite</button>
+      <button data-b="osm" aria-pressed="false">OSM</button>
+      <button data-b="none" aria-pressed="false">None</button>
+    </div>
+    <p class="hint">Relief is your cameratopo layer — phase × slope.</p>
+  </section>
+
+  <div class="pad">
+    <a class="dl" href="/labels.csv" download>Download labels.csv →</a><br>
+    <a class="dl" href="/annotations.csv" download>Download annotations.csv →</a>
+    <p class="hint"><kbd>1</kbd> ilha · <kbd>2</kbd> not · <kbd>3</kbd> unsure · <kbd>0</kbd> clear · <kbd>Esc</kbd> close</p>
+  </div>
+</div>
+
+<div class="detail" id="detail">
+  <div class="pad hd" style="display:flex;justify-content:space-between;align-items:center">
+    <strong id="d-title" style="font:600 14px/1 var(--ui)">—</strong>
+    <button id="d-close" style="background:none;border:0;color:var(--faint);font-size:20px;cursor:pointer;line-height:1">×</button>
+  </div>
+  <div class="chips">
+    <div class="chipbox"><span>DEM 2 km</span><img id="d-dem" alt=""><i class="x"></i></div>
+    <div class="chipbox"><span>Sat 2 km</span><img id="d-sat" alt=""><i class="x"></i></div>
+    <div class="chipbox"><span>DEM 10 km</span><img id="d-demw" alt=""><i class="x"></i></div>
+    <div class="chipbox"><span>Sat 10 km</span><img id="d-satw" alt=""><i class="x"></i></div>
+  </div>
+  <div class="pad">
+    <div class="pbar"><i id="d-pbar"></i></div>
+    <div style="display:flex;justify-content:space-between;font:600 11px/1 var(--mono);color:var(--faint);margin-bottom:11px">
+      <span>p_ilha</span><span id="d-p">—</span>
+    </div>
+    <table class="kv" id="d-kv"></table>
+  </div>
+  <div class="pad" style="border-top:1px solid var(--line)">
+    <div class="vote" id="votebox">
+      <button class="y" id="b-y">Ilha</button>
+      <button class="n" id="b-n">Not</button>
+      <button class="m" id="b-m">Unsure</button>
+      <button id="b-c">Clear</button>
+    </div>
+    <div id="annbox" style="display:none">
+      <div class="seg" style="margin-bottom:7px">
+        <button class="y" id="a-miss">Missed ilha</button>
+        <button class="n" id="a-not">Non-ilha</button>
+      </div>
+      <button id="a-del" style="width:100%;padding:9px;border-radius:8px;border:1.5px solid var(--line);background:var(--panel-2);color:var(--no);font:600 12px/1 var(--ui);cursor:pointer">Delete this annotation</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+"use strict";
+var map = L.map("map", {preferCanvas:true, zoomControl:true}).setView([-10.2,-63.0], 7);
+
+var TOPO = "https://cameratopo.pedalhidrografi.co/{z}/{x}/{y}.png?elevMin=80&elevMax=350&slopeMax=0.5&slopeGamma=1&cycles=1&dem=ee&ss=512";
+var bases = {
+  topo: L.tileLayer(TOPO, {maxZoom:15, attribution:"Relevo cameratopo.pedalhidrografi.co"}),
+  sat:  L.tileLayer("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        {maxZoom:18, attribution:"Imagery © Esri"}),
+  osm:  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {maxZoom:19, attribution:"© OpenStreetMap"})
+};
+var curBase = "topo";
+bases.topo.addTo(map);
+
+var labels = {}, feats = [], layer = null, sel = null;
+var annots = [], annLayer = null, selAnn = null, mode = "inspect";
+var F = {pmin:0, pmax:1, th:30, rel:0, ring:400, lbl:"all", batch:false};
+
+function annIcon(kind){
+  var c = kind === "missed" ? "#22b394" : "#d98341";
+  return L.divIcon({className:"", iconSize:[16,16], iconAnchor:[8,8],
+    html:'<div style="width:12px;height:12px;margin:2px;transform:rotate(45deg);'+
+         'background:'+c+';border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.65)"></div>'});
+}
+function drawAnnots(){
+  if(annLayer) map.removeLayer(annLayer);
+  var g = [];
+  for(var i=0;i<annots.length;i++){
+    (function(a){
+      var m = L.marker([a.lat, a.lon], {icon:annIcon(a.kind), title:"Annotation "+a.id});
+      m.on("click", function(e){ L.DomEvent.stopPropagation(e); selectAnn(a); });
+      g.push(m);
+    })(annots[i]);
+  }
+  annLayer = L.layerGroup(g).addTo(map);
+  var miss = 0, non = 0;
+  for(var j=0;j<annots.length;j++){ if(annots[j].kind==="missed") miss++; else non++; }
+  document.getElementById("t-miss").textContent = miss;
+  document.getElementById("t-nonilha").textContent = non;
+}
+
+function colour(p){
+  if(p == null) return "#8b93a3";
+  // amber -> neutral -> teal, diverging about 0.5
+  var a=[217,131,65], m=[139,147,163], t=[34,179,148], c;
+  if(p < 0.5){ var u=p/0.5; c=[a[0]+(m[0]-a[0])*u, a[1]+(m[1]-a[1])*u, a[2]+(m[2]-a[2])*u]; }
+  else { var u2=(p-0.5)/0.5; c=[m[0]+(t[0]-m[0])*u2, m[1]+(t[1]-m[1])*u2, m[2]+(t[2]-m[2])*u2]; }
+  return "rgb("+Math.round(c[0])+","+Math.round(c[1])+","+Math.round(c[2])+")";
+}
+function ringFor(fid){
+  var v = labels[fid];
+  if(v === "ilha") return "#22b394";
+  if(v === "not") return "#d98341";
+  if(v === "unsure") return "#8b93a3";
+  return "rgba(0,0,0,.55)";
+}
+function visible(p){
+  var pi = p.p_ilha == null ? 0 : p.p_ilha;
+  if(pi < F.pmin || pi > F.pmax) return false;
+  if((p.tophat_m||0) < F.th) return false;
+  if((p.relief_m||0) < F.rel) return false;
+  if((p.ring_relief_m||999) > F.ring) return false;
+  if(F.batch && p.batch !== 2) return false;
+  var v = labels[p.fid] || "";
+  if(F.lbl === "none" && v) return false;
+  if(F.lbl !== "all" && F.lbl !== "none" && v !== F.lbl) return false;
+  return true;
+}
+
+function draw(){
+  if(layer) map.removeLayer(layer);
+  var shown = 0, group = [];
+  for(var i=0;i<feats.length;i++){
+    var p = feats[i].properties;
+    if(!visible(p)) continue;
+    shown++;
+    var m = L.circleMarker([p.lat, p.lon], {
+      radius: 4, weight: 1.2, color: ringFor(p.fid),
+      fillColor: colour(p.p_ilha), fillOpacity: .9
+    });
+    m.__p = p;
+    m.on("click", function(){ select(this.__p); });
+    group.push(m);
+  }
+  layer = L.layerGroup(group).addTo(map);
+  document.getElementById("t-shown").textContent = shown.toLocaleString();
+  tally();
+}
+function tally(){
+  var y=0,n=0,m=0;
+  for(var k in labels){ var v=labels[k]; if(v==="ilha")y++; else if(v==="not")n++; else if(v==="unsure")m++; }
+  document.getElementById("t-y").textContent=y;
+  document.getElementById("t-n").textContent=n;
+  document.getElementById("t-m").textContent=m;
+}
+
+var KV = [["Top-hat","tophat_m","m"],["Relief","relief_m","m"],["Footprint","area_km2","km²"],
+          ["Ring relief","ring_relief_m","m"],["Slope p95","slope_p95","%"],
+          ["Summit","summit_m","m"],["Plain","plain_m","m"]];
+function showChips(qs){
+  document.getElementById("d-dem").src  = "/chip?"+qs+"&win=2000";
+  document.getElementById("d-demw").src = "/chip?"+qs+"&win=10000";
+  document.getElementById("d-sat").src  = "/sat?"+qs+"&win=2000";
+  document.getElementById("d-satw").src = "/sat?"+qs+"&win=10000";
+}
+
+function selectAnn(a){
+  sel = null; selAnn = a;
+  document.getElementById("detail").classList.add("on");
+  document.getElementById("votebox").style.display = "none";
+  document.getElementById("annbox").style.display = "block";
+  document.getElementById("d-title").textContent =
+    (a.kind === "missed" ? "Missed ilha #" : "Non-ilha #") + a.id;
+  document.getElementById("d-p").textContent = "not a detection";
+  document.getElementById("d-pbar").style.width = "0%";
+  showChips("lat="+a.lat+"&lon="+a.lon);
+  fetch("/probe?lat="+a.lat+"&lon="+a.lon).then(function(r){return r.json()}).then(function(z){
+    document.getElementById("d-kv").innerHTML =
+      "<tr><td>Elevation</td><td>"+(z.summit_m==null?"—":z.summit_m+" m")+"</td></tr>"+
+      "<tr><td>Slope</td><td>"+(z.slope_p95==null?"—":z.slope_p95+" %")+"</td></tr>"+
+      "<tr><td>Position</td><td>"+a.lat.toFixed(5)+", "+a.lon.toFixed(5)+"</td></tr>";
+  });
+  document.getElementById("a-miss").setAttribute("aria-pressed", a.kind==="missed");
+  document.getElementById("a-not").setAttribute("aria-pressed", a.kind!=="missed");
+}
+
+function select(p){
+  selAnn = null; sel = p;
+  document.getElementById("detail").classList.add("on");
+  document.getElementById("votebox").style.display = "grid";
+  document.getElementById("annbox").style.display = "none";
+  document.getElementById("d-title").textContent = "Candidate " + p.fid;
+  var pi = p.p_ilha == null ? 0 : p.p_ilha;
+  document.getElementById("d-p").textContent = pi.toFixed(3);
+  document.getElementById("d-pbar").style.width = (pi*100)+"%";
+  document.getElementById("d-pbar").style.background = colour(pi);
+  var h = "";
+  for(var i=0;i<KV.length;i++){
+    var v = p[KV[i][1]];
+    h += "<tr><td>"+KV[i][0]+"</td><td>"+(v==null?"—":(+v).toFixed(2)+" "+KV[i][2])+"</td></tr>";
+  }
+  h += "<tr><td>Position</td><td>"+p.lat.toFixed(5)+", "+p.lon.toFixed(5)+"</td></tr>";
+  document.getElementById("d-kv").innerHTML = h;
+  showChips("fid="+p.fid);
+  votes();
+}
+function votes(){
+  var v = sel ? (labels[sel.fid]||"") : "";
+  document.getElementById("b-y").setAttribute("aria-pressed", v==="ilha");
+  document.getElementById("b-n").setAttribute("aria-pressed", v==="not");
+  document.getElementById("b-m").setAttribute("aria-pressed", v==="unsure");
+}
+function setLabel(v){
+  if(!sel) return;
+  if(labels[sel.fid] === v) v = "";
+  fetch("/label", {method:"POST", headers:{"Content-Type":"application/json"},
+                   body: JSON.stringify({fid: sel.fid, label: v})})
+    .then(function(r){ return r.json(); })
+    .then(function(){
+      if(v) labels[sel.fid] = v; else delete labels[sel.fid];
+      votes(); draw();
+    });
+}
+
+document.getElementById("b-y").onclick=function(){setLabel("ilha")};
+document.getElementById("b-n").onclick=function(){setLabel("not")};
+document.getElementById("b-m").onclick=function(){setLabel("unsure")};
+document.getElementById("b-c").onclick=function(){setLabel("")};
+document.getElementById("d-close").onclick=function(){
+  document.getElementById("detail").classList.remove("on"); sel=null; selAnn=null;
+};
+
+function putAnn(body){
+  return fetch("/annotation", {method:"POST", headers:{"Content-Type":"application/json"},
+                               body: JSON.stringify(body)})
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      var found = false;
+      for(var i=0;i<annots.length;i++){
+        if(annots[i].id === j.annotation.id){ annots[i] = j.annotation; found = true; }
+      }
+      if(!found) annots.push(j.annotation);
+      drawAnnots();
+      return j.annotation;
+    });
+}
+document.getElementById("a-miss").onclick=function(){
+  if(selAnn) putAnn({id:selAnn.id, lat:selAnn.lat, lon:selAnn.lon, kind:"missed"}).then(selectAnn);
+};
+document.getElementById("a-not").onclick=function(){
+  if(selAnn) putAnn({id:selAnn.id, lat:selAnn.lat, lon:selAnn.lon, kind:"not"}).then(selectAnn);
+};
+document.getElementById("a-del").onclick=function(){
+  if(!selAnn) return;
+  var id = selAnn.id;
+  fetch("/annotation/delete", {method:"POST", headers:{"Content-Type":"application/json"},
+                               body: JSON.stringify({id:id})})
+    .then(function(){
+      annots = annots.filter(function(a){ return a.id !== id; });
+      drawAnnots();
+      document.getElementById("d-close").click();
+    });
+};
+
+document.getElementById("mode").addEventListener("click", function(e){
+  var b = e.target.closest("button"); if(!b) return;
+  var all = this.querySelectorAll("button");
+  for(var i=0;i<all.length;i++) all[i].setAttribute("aria-pressed", all[i]===b);
+  mode = b.getAttribute("data-m");
+  document.getElementById("modehint").textContent =
+    mode === "inspect" ? "Click a detection to inspect it." :
+    mode === "missed"  ? "Click the map where the detector MISSED an ilha." :
+                         "Click the map on ground that is NOT an ilha.";
+  document.getElementById("map").style.cursor = mode === "inspect" ? "" : "crosshair";
+});
+
+map.on("click", function(e){
+  if(mode === "inspect") return;
+  putAnn({lat: +e.latlng.lat.toFixed(5), lon: +e.latlng.lng.toFixed(5),
+          kind: mode === "missed" ? "missed" : "not"}).then(selectAnn);
+});
+
+document.addEventListener("keydown", function(e){
+  if(e.metaKey || e.ctrlKey) return;
+  if(e.key==="Escape"){ document.getElementById("d-close").click(); return; }
+  if(!sel) return;
+  if(e.key==="1") setLabel("ilha");
+  else if(e.key==="2") setLabel("not");
+  else if(e.key==="3") setLabel("unsure");
+  else if(e.key==="0") setLabel("");
+});
+
+function bindRange(id, key, fmt){
+  var el = document.getElementById(id), out = document.getElementById("v-"+id);
+  el.addEventListener("input", function(){
+    F[key] = parseFloat(el.value);
+    out.textContent = fmt(el.value);
+    draw();
+  });
+  out.textContent = fmt(el.value);
+}
+bindRange("pmin","pmin",function(v){return (+v).toFixed(2)});
+bindRange("pmax","pmax",function(v){return (+v).toFixed(2)});
+bindRange("th","th",function(v){return v});
+bindRange("rel","rel",function(v){return v});
+bindRange("ring","ring",function(v){return v});
+
+document.getElementById("lblfilter").addEventListener("click", function(e){
+  var b = e.target.closest("button"); if(!b) return;
+  var all = this.querySelectorAll("button");
+  for(var i=0;i<all.length;i++) all[i].setAttribute("aria-pressed", all[i]===b);
+  F.lbl = b.getAttribute("data-f"); draw();
+});
+document.getElementById("b-batch").onclick=function(){
+  F.batch = !F.batch;
+  this.setAttribute("aria-pressed", F.batch);
+  if(F.batch){ document.getElementById("pmin").value=0; F.pmin=0;
+    document.getElementById("v-pmin").textContent="0.00"; }
+  draw();
+};
+document.getElementById("basemap").addEventListener("click", function(e){
+  var b = e.target.closest("button"); if(!b) return;
+  var all = this.querySelectorAll("button");
+  for(var i=0;i<all.length;i++) all[i].setAttribute("aria-pressed", all[i]===b);
+  if(bases[curBase]) map.removeLayer(bases[curBase]);
+  curBase = b.getAttribute("data-b");
+  if(bases[curBase]) bases[curBase].addTo(map);
+});
+
+Promise.all([
+  fetch("/points.geojson").then(function(r){return r.json()}),
+  fetch("/labels").then(function(r){return r.json()}),
+  fetch("/annotations").then(function(r){return r.json()})
+]).then(function(res){
+  feats = res[0].features;
+  labels = res[1] || {};
+  annots = res[2] || [];
+  draw();
+  drawAnnots();
+  var b = L.geoJSON(res[0]).getBounds();
+  if(b.isValid()) map.fitBounds(b.pad(0.02));
+}).catch(function(e){
+  document.querySelector(".panel").insertAdjacentHTML("beforeend",
+    '<div class="loading">Could not load data: '+e+'</div>');
+});
+})();
+</script>
+</body>
+</html>

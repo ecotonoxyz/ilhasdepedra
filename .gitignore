@@ -1,0 +1,10 @@
+.DS_Store
+
+# geodata workspace: multi-GB rasters and working files — not for git.
+# (site/data holds the exported slices the page actually needs)
+qgis-proj/*.tif
+qgis-proj/*.tif.aux.xml
+qgis-proj/*.gpkg-wal
+qgis-proj/*.gpkg-shm
+qgis-proj/viewer/server.log
+.vscode/
