@@ -203,7 +203,7 @@ body.intro-open .mk{visibility:hidden;pointer-events:none}
   </div>
   <div class="fovrow" title="ângulo de visão da câmera">
     <label for="fov">lente</label>
-    <input type="range" id="fov" min="15" max="110" step="1" value="37" aria-label="ângulo de visão">
+    <input type="range" id="fov" min="1" max="60" step="1" value="37" aria-label="ângulo de visão">
     <b id="fovv">37°</b>
   </div>
 </div>
@@ -277,7 +277,7 @@ var RM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 var map = new maplibregl.Map({
   container:"map",
   center:HOME.center, zoom:HOME.zoom,
-  minZoom:6, maxZoom:16.5,
+  minZoom:6, maxZoom:16.5, maxPitch:80,
   maxBounds:[[-66.4,-13.0],[-60.0,-6.8]],
   attributionControl:false,
   style:{
