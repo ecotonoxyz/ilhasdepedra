@@ -10,11 +10,20 @@ Images without GPS borrow the position of the nearest-in-time photo that
 has one (the cameras were side by side); those get "approx": true.
 """
 import json
+import math
 import subprocess
 from datetime import datetime
 from pathlib import Path
 
 from PIL import Image, ImageOps
+
+
+def hfov_deg(focal35, width, height):
+    """Horizontal FOV from 35mm-equivalent focal length (36x24mm frame)."""
+    if not focal35:
+        return None
+    half = 18.0 if width >= height else 12.0
+    return round(2 * math.degrees(math.atan(half / focal35)), 1)
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "images" / "ai-curated"
@@ -31,6 +40,7 @@ def main():
     meta = json.loads(subprocess.run(
         ["exiftool", "-json", "-n", "-GPSLatitude", "-GPSLongitude",
          "-GPSImgDirection", "-DateTimeOriginal", "-Model",
+         "-FocalLength35efl", "-ImageWidth", "-ImageHeight",
          "-XMP-dc:Description", "-IPTC:Caption-Abstract",
          *[str(f) for f in files]],
         capture_output=True, check=True).stdout)
@@ -49,6 +59,8 @@ def main():
             "id": p.stem,
             "lat": m.get("GPSLatitude"), "lon": m.get("GPSLongitude"),
             "dir": m.get("GPSImgDirection"),
+            "hfov": hfov_deg(m.get("FocalLength35efl"),
+                             m.get("ImageWidth", 0), m.get("ImageHeight", 0)),
             "dt": dt, "_ts": ts, "approx": False,
             "camera": m.get("Model"),
             "desc": m.get("Description") or m.get("Caption-Abstract") or "",

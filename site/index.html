@@ -515,19 +515,30 @@ function sector(lon,lat,heading,hfov,r){
   pts.push([lon,lat]);
   return pts;
 }
+function coneFeats(lon,lat,heading,hfov,id){
+  var out = [];
+  [[620,0.09,1],[400,0.13,0],[205,0.20,0]].forEach(function(t){
+    out.push({type:"Feature",
+      properties:{o:t[1], edge:t[2], mid:id},
+      geometry:{type:"Polygon",
+        coordinates:[sector(lon,lat,heading,hfov,t[0])]}});
+  });
+  return out;
+}
+var fieldCones = [], galleryCones = [];
 function buildCones(items){
   var feats = [];
   items.forEach(function(m){
     if(m.heading == null) return;
-    var hfov = m.hfov || 58;
-    [[620,0.09,1],[400,0.13,0],[205,0.20,0]].forEach(function(t){
-      feats.push({type:"Feature",
-        properties:{o:t[1], edge:t[2], mid:m.id},
-        geometry:{type:"Polygon",
-          coordinates:[sector(m.lon,m.lat,m.heading,hfov,t[0])]}});
-    });
+    feats = feats.concat(coneFeats(m.lon,m.lat,m.heading,m.hfov||58,m.id));
   });
-  return {type:"FeatureCollection",features:feats};
+  return feats;
+}
+function refreshCones(){
+  var src = map.getSource("cones");
+  if(!src){ map.once("load", refreshCones); return; }
+  src.setData({type:"FeatureCollection",
+    features: fieldCones.concat(albumOn ? galleryCones : [])});
 }
 
 /* ---------------- state ---------------- */
@@ -539,8 +550,8 @@ var hoverchip = document.getElementById("hoverchip");
 fetch("data/media.json").then(function(r){return r.json()}).then(function(items){
   items.sort(function(a,b){ return (a.datetime||"") < (b.datetime||"") ? -1 : 1; });
   media = items;
-  if(map.isStyleLoaded()) map.getSource("cones").setData(buildCones(items));
-  else map.once("load", function(){ map.getSource("cones").setData(buildCones(items)); });
+  fieldCones = buildCones(items);
+  refreshCones();
 
   items.forEach(function(m){
     var el = document.createElement("div");
@@ -558,6 +569,7 @@ fetch("data/media.json").then(function(r){return r.json()}).then(function(items)
     markers[m.id] = new maplibregl.Marker({element:el})
       .setLngLat([m.lon,m.lat]).addTo(map);
   });
+  declutter();
 
   var h = location.hash.match(/^#m\/(.+)$/);
   if(h){
@@ -652,6 +664,12 @@ function loadGallery(){
       gEls[g.id] = el;
       gMarkers.push(new maplibregl.Marker({element:el}).setLngLat([g.lon,g.lat]));
     });
+    galleryCones = [];
+    items.forEach(function(g){
+      if(g.dir == null || g.lat == null) return;
+      galleryCones = galleryCones.concat(
+        coneFeats(g.lon,g.lat,g.dir,g.hfov||58,g.id));
+    });
   });
 }
 function setAlbum(on, fit){
@@ -660,6 +678,8 @@ function setAlbum(on, fit){
   if(on){
     loadGallery().then(function(){
       gMarkers.forEach(function(m){ m.addTo(map); });
+      refreshCones();
+      declutter();
       if(fit !== false){
         var b = new maplibregl.LngLatBounds();
         gallery.forEach(function(g){ if(g.lat != null) b.extend([g.lon,g.lat]); });
@@ -668,6 +688,8 @@ function setAlbum(on, fit){
     });
   }else{
     if(gMarkers) gMarkers.forEach(function(m){ m.remove(); });
+    refreshCones();
+    declutter();
     if(selG) closePanel();
   }
 }
@@ -715,6 +737,39 @@ function openGallery(g){
          bearing:(g.dir != null ? g.dir : map.getBearing()),
          offset:[0,90], duration:2000});
 }
+
+/* ---------------- declutter: espalha marcadores sobrepostos ---------------- */
+function declutter(){
+  var refs = [];
+  Object.keys(markers).forEach(function(k){ refs.push(markers[k]); });
+  if(albumOn && gMarkers) refs = refs.concat(gMarkers);
+  var n = refs.length;
+  if(!n) return;
+  var pts = refs.map(function(m){ return map.project(m.getLngLat()); });
+  var TH = 42, parent = [];
+  for(var i=0;i<n;i++) parent[i] = i;
+  function find(a){ while(parent[a]!==a){ parent[a]=parent[parent[a]]; a=parent[a]; } return a; }
+  for(var a=0;a<n;a++) for(var b=a+1;b<n;b++){
+    var dx = pts[a].x-pts[b].x, dy = pts[a].y-pts[b].y;
+    if(dx*dx+dy*dy < TH*TH) parent[find(a)] = find(b);
+  }
+  var groups = {};
+  for(var j=0;j<n;j++){ var r = find(j); (groups[r]=groups[r]||[]).push(j); }
+  Object.keys(groups).forEach(function(k){
+    var g = groups[k];
+    if(g.length === 1){ refs[g[0]].setOffset([0,0]); return; }
+    var cx = 0, cy = 0;
+    g.forEach(function(i){ cx += pts[i].x; cy += pts[i].y; });
+    cx /= g.length; cy /= g.length;
+    var R = 14 + 9*g.length;
+    g.forEach(function(i, idx){
+      var ang = 2*Math.PI*idx/g.length - Math.PI/2;
+      refs[i].setOffset([cx + R*Math.cos(ang) - pts[i].x,
+                         cy + R*Math.sin(ang) - pts[i].y]);
+    });
+  });
+}
+map.on("moveend", declutter);
 
 /* ---------------- ilhas interactions ---------------- */
 function clearIlha(){
