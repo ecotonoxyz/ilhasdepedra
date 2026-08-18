@@ -49,13 +49,26 @@ button{font-family:inherit}
   padding:7px 14px;border-radius:99px;cursor:pointer;letter-spacing:.03em}
 #basemaps button[aria-pressed="true"]{background:#fff;color:#14101a}
 
-#south{position:absolute;right:14px;bottom:calc(max(14px,env(safe-area-inset-bottom)) + 34px);
-  z-index:30;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);
-  background:var(--panel);color:#fff;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.5);
-  font:700 15px var(--display);backdrop-filter:blur(6px)}
+#camctl{position:absolute;right:12px;bottom:calc(max(14px,env(safe-area-inset-bottom)) + 34px);
+  z-index:30;display:flex;flex-direction:column;align-items:center;gap:5px;
+  background:var(--panel);border:1px solid var(--line);border-radius:16px;
+  padding:8px 10px 9px;box-shadow:0 6px 24px rgba(0,0,0,.5);backdrop-filter:blur(6px)}
+#camctl .pad{display:grid;grid-template-columns:repeat(3,30px);
+  grid-template-rows:repeat(3,30px);place-items:center}
+#camctl .pad button{width:30px;height:30px;border:0;border-radius:9px;background:none;
+  color:rgba(255,255,255,.85);font-size:10px;cursor:pointer;touch-action:none;padding:0}
+#camctl .pad button:hover{background:rgba(255,255,255,.14);color:#fff}
+#camctl .pad button:active{background:var(--pink);color:#fff}
+.c-up{grid-column:2;grid-row:1} .c-left{grid-column:1;grid-row:2}
+.c-right{grid-column:3;grid-row:2} .c-down{grid-column:2;grid-row:3}
+#south{grid-column:2;grid-row:2;font:700 13px var(--display)}
 #south .rose{display:inline-block;transition:transform .2s}
 #south .rose i{display:block;font-style:normal;line-height:1}
-#south .rose i.arrow{font-size:11px;margin-top:-3px}
+#south .rose i.arrow{font-size:9px;margin-top:-2px}
+.fovrow{display:flex;align-items:center;gap:6px;width:104px}
+.fovrow label{font:600 9.5px var(--display);letter-spacing:.06em;color:var(--muted)}
+.fovrow input{flex:1;min-width:0;accent-color:#fff}
+.fovrow b{font:600 9.5px var(--mono);color:var(--muted);min-width:25px;text-align:right}
 
 #hoverchip{position:absolute;z-index:40;pointer-events:none;display:none;
   background:rgba(12,8,15,.92);border:1px solid var(--line);border-radius:8px;
@@ -178,9 +191,22 @@ body.intro-open .mk{visibility:hidden;pointer-events:none}
   <button data-b="sat" aria-pressed="false">satélite</button>
 </div>
 
-<button id="south" title="voltar o norte para cima">
-  <span class="rose"><i>S</i><i class="arrow">↓</i></span>
-</button>
+<div id="camctl" role="group" aria-label="controles da câmera">
+  <div class="pad">
+    <button class="c-up" data-rot="up" aria-label="inclinar para o horizonte" title="inclinar para o horizonte">▲</button>
+    <button class="c-left" data-rot="left" aria-label="girar para a esquerda" title="girar para a esquerda">◀</button>
+    <button id="south" title="norte para cima, vista de cima" aria-label="restaurar vista">
+      <span class="rose"><i>S</i><i class="arrow">↓</i></span>
+    </button>
+    <button class="c-right" data-rot="right" aria-label="girar para a direita" title="girar para a direita">▶</button>
+    <button class="c-down" data-rot="down" aria-label="inclinar para baixo" title="inclinar para baixo">▼</button>
+  </div>
+  <div class="fovrow" title="ângulo de visão da câmera">
+    <label for="fov">lente</label>
+    <input type="range" id="fov" min="15" max="110" step="1" value="37" aria-label="ângulo de visão">
+    <b id="fovv">37°</b>
+  </div>
+</div>
 
 <aside id="panel" aria-live="polite"></aside>
 
@@ -632,7 +658,7 @@ document.getElementById("basemaps").addEventListener("click", function(e){
   if(btn) setBase(btn.getAttribute("data-b"));
 });
 
-/* ---------------- south rose ---------------- */
+/* ---------------- camera controls ---------------- */
 var rose = document.querySelector("#south .rose");
 map.on("rotate", function(){
   rose.style.transform = "rotate("+(-map.getBearing())+"deg)";
@@ -640,6 +666,51 @@ map.on("rotate", function(){
 document.getElementById("south").onclick = function(){
   fly({bearing:0, pitch:0, duration:900});
 };
+
+/* hold-to-rotate pad: bearing left/right, pitch up/down */
+var holdRAF = null;
+function stopHold(){ if(holdRAF){ cancelAnimationFrame(holdRAF); holdRAF = null; } }
+function startHold(act){
+  stopHold();
+  var last = performance.now();
+  function step(now){
+    var dt = Math.min((now - last)/1000, 0.05); last = now;
+    if(act==="left" || act==="right"){
+      map.jumpTo({bearing: map.getBearing() + (act==="right"?1:-1)*80*dt});
+    }else{
+      var p = map.getPitch() + (act==="up"?1:-1)*55*dt;
+      map.jumpTo({pitch: Math.max(0, Math.min(map.getMaxPitch(), p))});
+    }
+    holdRAF = requestAnimationFrame(step);
+  }
+  holdRAF = requestAnimationFrame(step);
+}
+document.querySelectorAll("#camctl [data-rot]").forEach(function(b){
+  var act = b.getAttribute("data-rot");
+  b.addEventListener("pointerdown", function(e){
+    e.preventDefault();
+    try{ b.setPointerCapture(e.pointerId); }catch(_){}
+    startHold(act);
+  });
+  b.addEventListener("pointerup", stopHold);
+  b.addEventListener("pointercancel", stopHold);
+});
+window.addEventListener("blur", stopHold);
+
+/* lens: the camera's vertical field of view */
+var fovEl = document.getElementById("fov"), fovV = document.getElementById("fovv");
+if(typeof map.setVerticalFieldOfView === "function"){
+  map.once("load", function(){
+    var f = Math.round(map.getVerticalFieldOfView());
+    fovEl.value = f; fovV.textContent = f+"°";
+  });
+  fovEl.addEventListener("input", function(){
+    map.setVerticalFieldOfView(+fovEl.value);
+    fovV.textContent = fovEl.value+"°";
+  });
+}else{
+  document.querySelector(".fovrow").style.display = "none";
+}
 
 /* ---------------- intro / about ---------------- */
 var intro = document.getElementById("intro");
