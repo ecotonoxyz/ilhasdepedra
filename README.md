@@ -50,6 +50,9 @@ Approximate label coordinates (municipality seats, serras) live in
 
 `site/zine.pdf` is the web version of the booklet, regenerated with
 `gs -dPDFSETTINGS=/ebook` from `assets/ilhas de pedra do jamari.pdf`.
+The in-site viewer reads page images from `site/zine/p%02d.jpg`
+(`gs -sDEVICE=jpeg -r120`); if the page count changes, update the `ZN`
+constant in `site/index.html`.
 
 ## Preview and deploy
 
