@@ -124,7 +124,7 @@ button{font-family:inherit}
 /* the .mk root is positioned by maplibre (absolute + per-frame transform) —
    it must carry no transform transition nor a position override, or markers
    drift off their spot. All styling/animation lives on the inner .face. */
-.mk{width:40px;height:40px;cursor:pointer}
+.mk{width:var(--mk-size,40px);height:var(--mk-size,40px);cursor:pointer}
 body.intro-open .mk{visibility:hidden;pointer-events:none}
 .mk .face{position:absolute;inset:0;border-radius:50%;border:2.5px solid #fff;
   background:#000 center/cover no-repeat;box-shadow:0 2px 12px rgba(0,0,0,.65);
@@ -525,20 +525,27 @@ function coneFeats(lon,lat,heading,hfov,id){
   });
   return out;
 }
-var fieldCones = [], galleryCones = [];
-function buildCones(items){
+var coneOverride = {};  // id -> {lon,lat}, set by declutter() for spread markers
+function conePos(m){
+  var o = coneOverride[m.id];
+  return o ? [o.lon,o.lat] : [m.lon,m.lat];
+}
+function buildConeSet(items){
   var feats = [];
   items.forEach(function(m){
-    if(m.heading == null) return;
-    feats = feats.concat(coneFeats(m.lon,m.lat,m.heading,m.hfov||58,m.id));
+    var heading = m.heading != null ? m.heading : m.dir;
+    if(heading == null) return;
+    var p = conePos(m);
+    feats = feats.concat(coneFeats(p[0],p[1],heading,m.hfov||58,m.id));
   });
   return feats;
 }
 function refreshCones(){
   var src = map.getSource("cones");
   if(!src){ map.once("load", refreshCones); return; }
-  src.setData({type:"FeatureCollection",
-    features: fieldCones.concat(albumOn ? galleryCones : [])});
+  var feats = buildConeSet(media);
+  if(albumOn) feats = feats.concat(buildConeSet(gallery));
+  src.setData({type:"FeatureCollection",features:feats});
 }
 
 /* ---------------- state ---------------- */
@@ -550,7 +557,6 @@ var hoverchip = document.getElementById("hoverchip");
 fetch("data/media.json").then(function(r){return r.json()}).then(function(items){
   items.sort(function(a,b){ return (a.datetime||"") < (b.datetime||"") ? -1 : 1; });
   media = items;
-  fieldCones = buildCones(items);
   refreshCones();
 
   items.forEach(function(m){
@@ -644,7 +650,7 @@ function closePanel(){
 }
 
 /* ---------------- álbum da expedição ---------------- */
-var gallery = [], gMarkers = null, gEls = {}, albumOn = false, selG = null;
+var gallery = [], gMarkers = null, gMarkersById = {}, gEls = {}, albumOn = false, selG = null;
 function loadGallery(){
   if(gMarkers) return Promise.resolve();
   return fetch("data/gallery.json").then(function(r){return r.json()}).then(function(items){
@@ -662,13 +668,9 @@ function loadGallery(){
       el.appendChild(face);
       el.addEventListener("click", function(e){ e.stopPropagation(); openGallery(g); });
       gEls[g.id] = el;
-      gMarkers.push(new maplibregl.Marker({element:el}).setLngLat([g.lon,g.lat]));
-    });
-    galleryCones = [];
-    items.forEach(function(g){
-      if(g.dir == null || g.lat == null) return;
-      galleryCones = galleryCones.concat(
-        coneFeats(g.lon,g.lat,g.dir,g.hfov||58,g.id));
+      var mk = new maplibregl.Marker({element:el}).setLngLat([g.lon,g.lat]);
+      gMarkersById[g.id] = mk;
+      gMarkers.push(mk);
     });
   });
 }
@@ -738,36 +740,64 @@ function openGallery(g){
          offset:[0,90], duration:2000});
 }
 
+/* ---------------- tamanho dos marcadores por zoom ---------------- */
+function mkSizeForZoom(z){
+  var lo=9, hi=15, s0=26, s1=58;
+  var t = Math.max(0, Math.min(1, (z-lo)/(hi-lo)));
+  return Math.round(s0 + (s1-s0)*t);
+}
+function markerSize(){
+  return parseFloat(getComputedStyle(document.documentElement)
+    .getPropertyValue("--mk-size")) || 40;
+}
+function updateMkSize(){
+  document.documentElement.style.setProperty("--mk-size", mkSizeForZoom(map.getZoom())+"px");
+}
+map.on("zoom", updateMkSize);
+updateMkSize();
+
 /* ---------------- declutter: espalha marcadores sobrepostos ---------------- */
 function declutter(){
   var refs = [];
-  Object.keys(markers).forEach(function(k){ refs.push(markers[k]); });
-  if(albumOn && gMarkers) refs = refs.concat(gMarkers);
+  Object.keys(markers).forEach(function(k){ refs.push({id:k, marker:markers[k]}); });
+  if(albumOn) Object.keys(gMarkersById).forEach(function(id){
+    refs.push({id:id, marker:gMarkersById[id]});
+  });
   var n = refs.length;
   if(!n) return;
-  var pts = refs.map(function(m){ return map.project(m.getLngLat()); });
-  var TH = 42, parent = [];
+  var pts = refs.map(function(r){ return map.project(r.marker.getLngLat()); });
+  var D = markerSize(), TH = D * 1.05, parent = [];
   for(var i=0;i<n;i++) parent[i] = i;
   function find(a){ while(parent[a]!==a){ parent[a]=parent[parent[a]]; a=parent[a]; } return a; }
   for(var a=0;a<n;a++) for(var b=a+1;b<n;b++){
     var dx = pts[a].x-pts[b].x, dy = pts[a].y-pts[b].y;
     if(dx*dx+dy*dy < TH*TH) parent[find(a)] = find(b);
   }
-  var groups = {};
+  var groups = {}, touched = false;
   for(var j=0;j<n;j++){ var r = find(j); (groups[r]=groups[r]||[]).push(j); }
   Object.keys(groups).forEach(function(k){
     var g = groups[k];
-    if(g.length === 1){ refs[g[0]].setOffset([0,0]); return; }
+    if(g.length === 1){
+      refs[g[0]].marker.setOffset([0,0]);
+      if(coneOverride[refs[g[0]].id]){ delete coneOverride[refs[g[0]].id]; touched = true; }
+      return;
+    }
     var cx = 0, cy = 0;
     g.forEach(function(i){ cx += pts[i].x; cy += pts[i].y; });
     cx /= g.length; cy /= g.length;
-    var R = 14 + 9*g.length;
+    /* phyllotaxis spiral: a filled, organic-looking cluster (not a ring)
+       where markers land touching-but-not-overlapping */
+    var GOLDEN = 2.39996323, spacing = D * 0.525;
     g.forEach(function(i, idx){
-      var ang = 2*Math.PI*idx/g.length - Math.PI/2;
-      refs[i].setOffset([cx + R*Math.cos(ang) - pts[i].x,
-                         cy + R*Math.sin(ang) - pts[i].y]);
+      var rad = spacing * Math.sqrt(idx + 0.5), ang = idx * GOLDEN;
+      var ox = rad*Math.cos(ang), oy = rad*Math.sin(ang);
+      refs[i].marker.setOffset([ox, oy]);
+      var ll = map.unproject([pts[i].x+ox, pts[i].y+oy]);
+      coneOverride[refs[i].id] = {lon:ll.lng, lat:ll.lat};
+      touched = true;
     });
   });
+  if(touched) refreshCones();
 }
 map.on("moveend", declutter);
 
