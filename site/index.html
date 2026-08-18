@@ -799,7 +799,7 @@ function setBase(b){
 }
 document.getElementById("basemaps").addEventListener("click", function(e){
   var btn = e.target.closest("button");
-  if(btn) setBase(btn.getAttribute("data-b"));
+  if(btn && btn.getAttribute("data-b")) setBase(btn.getAttribute("data-b"));
 });
 
 /* ---------------- camera controls ---------------- */
