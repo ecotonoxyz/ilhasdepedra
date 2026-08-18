@@ -48,6 +48,9 @@ qgis-proj/       geodata + detection work (see its ilha-pedra-detection.md)
 Approximate label coordinates (municipality seats, serras) live in
 `scripts/build_data.py` — correct them there, not in the generated files.
 
+`site/zine.pdf` is the web version of the booklet, regenerated with
+`gs -dPDFSETTINGS=/ebook` from `assets/ilhas de pedra do jamari.pdf`.
+
 ## Preview and deploy
 
 ```
