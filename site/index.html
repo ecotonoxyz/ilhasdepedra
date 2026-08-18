@@ -40,6 +40,8 @@ button{font-family:inherit}
   font-family:var(--display);text-shadow:0 1px 10px rgba(0,0,0,.7)}
 #brand b{display:block;font-size:17px;font-weight:700;letter-spacing:.02em;line-height:1.1}
 #brand span{font-size:12px;font-weight:600;color:rgba(255,255,255,.85)}
+#brand em{display:block;margin-top:3px;font-style:normal;font-size:10.5px;
+  font-weight:600;letter-spacing:.05em;color:var(--amber)}
 #brand:hover span{color:var(--pink)}
 
 #basemaps{position:absolute;left:14px;bottom:max(14px,env(safe-area-inset-bottom));z-index:30;
@@ -215,6 +217,7 @@ body.intro-open .mk{visibility:hidden;pointer-events:none}
 
 <button id="brand" title="sobre o projeto">
   <b>ilhas de pedra</b><span>do vale do jamari</span>
+  <em id="brand-count"></em>
 </button>
 
 <div id="basemaps" role="group" aria-label="mapa base">
@@ -962,6 +965,11 @@ document.addEventListener("keydown", function(e){
     else if(panel.classList.contains("on")) closePanel();
   }
 });
+
+fetch("data/stats.json").then(function(r){return r.json()}).then(function(s){
+  if(s.ilhas) document.getElementById("brand-count").textContent =
+    s.ilhas.toLocaleString("pt-BR")+" ilhas detectadas";
+}).catch(function(){});
 
 /* console handle, também usado pelos testes */
 window.__map = map; window.__setBase = setBase; window.__openIlha = openIlha;

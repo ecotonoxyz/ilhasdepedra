@@ -52,6 +52,9 @@ def build_ilhas():
         "FROM candidates WHERE (p_ilha >= 0.9 OR label = 'ilha') "
         f"AND lon BETWEEN {lonmin} AND {lonmax} "
         f"AND lat BETWEEN {latmin} AND {latmax}")
+    n = len(json.loads((DATA / "ilhas.geojson").read_text())["features"])
+    (DATA / "stats.json").write_text(json.dumps({"ilhas": n}))
+    print(f"    -> stats.json: {n} ilhas")
 
 
 def build_streams():
