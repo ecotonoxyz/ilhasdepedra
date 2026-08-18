@@ -8,3 +8,4 @@ qgis-proj/*.gpkg-wal
 qgis-proj/*.gpkg-shm
 qgis-proj/viewer/server.log
 .vscode/
+raw-assets/*raw-assets/

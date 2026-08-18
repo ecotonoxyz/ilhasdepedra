@@ -48,6 +48,17 @@ qgis-proj/       geodata + detection work (see its ilha-pedra-detection.md)
 Approximate label coordinates (municipality seats, serras) live in
 `scripts/build_data.py` — correct them there, not in the generated files.
 
+### Álbum da expedição (site "álbum" toggle)
+
+`images/ai-curated/` holds the ~100 photos curated from the `raw-assets/`
+album dump (raw-assets stays untracked). Each curated file carries an
+AI-written ~30-word pt-BR description embedded in its own metadata
+(XMP-dc:Description + IPTC Caption + EXIF ImageDescription) — edit it there;
+the originals are the source of truth. `python3 scripts/build_gallery.py`
+regenerates `site/gallery/` (web copies + thumbnails) and
+`site/data/gallery.json`; photos without GPS borrow the position of the
+nearest-in-time photo that has one and are flagged `approx`.
+
 `site/zine.pdf` is the web version of the booklet, regenerated with
 `gs -dPDFSETTINGS=/ebook` from `assets/ilhas de pedra do jamari.pdf`.
 The in-site viewer reads page images from `site/zine/p%02d.jpg`

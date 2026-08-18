@@ -48,6 +48,15 @@ button{font-family:inherit}
 #basemaps button{border:0;background:none;color:var(--muted);font:600 12.5px var(--display);
   padding:7px 14px;border-radius:99px;cursor:pointer;letter-spacing:.03em}
 #basemaps button[aria-pressed="true"]{background:#fff;color:#14101a}
+#basemaps .sep{width:1px;align-self:stretch;margin:4px 2px;background:var(--line)}
+#albumtoggle[aria-pressed="true"]{background:var(--pink)!important;color:#fff!important}
+
+/* gallery markers: no transform styling on the root (maplibre owns it) */
+.gk{width:28px;height:28px;border-radius:50%;border:2px solid #fff;cursor:pointer;
+  background:#000 center/cover no-repeat;box-shadow:0 1px 8px rgba(0,0,0,.6)}
+.gk:hover{border-color:var(--amber)}
+.gk.sel{border-color:var(--pink);box-shadow:0 0 0 3px rgba(255,79,160,.35),0 1px 8px rgba(0,0,0,.6)}
+body.intro-open .gk{visibility:hidden;pointer-events:none}
 
 #camctl{position:absolute;right:12px;bottom:calc(max(14px,env(safe-area-inset-bottom)) + 34px);
   z-index:30;display:flex;flex-direction:column;align-items:center;gap:5px;
@@ -216,6 +225,8 @@ body.intro-open .mk{visibility:hidden;pointer-events:none}
 <div id="basemaps" role="group" aria-label="mapa base">
   <button data-b="relevo" aria-pressed="true">relevo</button>
   <button data-b="sat" aria-pressed="false">satélite</button>
+  <i class="sep" aria-hidden="true"></i>
+  <button id="albumtoggle" aria-pressed="false" title="fotos da expedição pelo estado">álbum</button>
 </div>
 
 <div id="camctl" role="group" aria-label="controles da câmera">
@@ -557,6 +568,7 @@ fetch("data/media.json").then(function(r){return r.json()}).then(function(items)
 
 function openMedia(m){
   clearIlha();
+  if(selG && gEls[selG.id]){ gEls[selG.id].classList.remove("sel"); selG = null; }
   if(selMedia && markers[selMedia.id]) markers[selMedia.id].getElement().classList.remove("sel");
   selMedia = m;
   markers[m.id].getElement().classList.add("sel");
@@ -613,8 +625,92 @@ function closePanel(){
   panel.classList.remove("on");
   if(selMedia && markers[selMedia.id]) markers[selMedia.id].getElement().classList.remove("sel");
   selMedia = null;
+  if(selG && gEls[selG.id]) gEls[selG.id].classList.remove("sel");
+  selG = null;
   clearIlha();
   history.replaceState(null,""," "+location.pathname.slice(location.pathname.lastIndexOf("/")+1));
+}
+
+/* ---------------- álbum da expedição ---------------- */
+var gallery = [], gMarkers = null, gEls = {}, albumOn = false, selG = null;
+function loadGallery(){
+  if(gMarkers) return Promise.resolve();
+  return fetch("data/gallery.json").then(function(r){return r.json()}).then(function(items){
+    gallery = items;
+    gMarkers = [];
+    items.forEach(function(g){
+      if(g.lat == null) return;
+      var el = document.createElement("div");
+      el.className = "gk";
+      el.style.backgroundImage = "url('gallery/t/"+g.id+".jpeg')";
+      el.setAttribute("role","button");
+      el.setAttribute("aria-label", g.id);
+      el.addEventListener("click", function(e){ e.stopPropagation(); openGallery(g); });
+      gEls[g.id] = el;
+      gMarkers.push(new maplibregl.Marker({element:el}).setLngLat([g.lon,g.lat]));
+    });
+  });
+}
+function setAlbum(on, fit){
+  albumOn = on;
+  document.getElementById("albumtoggle").setAttribute("aria-pressed", on);
+  if(on){
+    loadGallery().then(function(){
+      gMarkers.forEach(function(m){ m.addTo(map); });
+      if(fit !== false){
+        var b = new maplibregl.LngLatBounds();
+        gallery.forEach(function(g){ if(g.lat != null) b.extend([g.lon,g.lat]); });
+        if(!b.isEmpty()) map.fitBounds(b, {padding:90, duration:2200, essential:true});
+      }
+    });
+  }else{
+    if(gMarkers) gMarkers.forEach(function(m){ m.remove(); });
+    if(selG) closePanel();
+  }
+}
+document.getElementById("albumtoggle").onclick = function(){ setAlbum(!albumOn); };
+
+function openGallery(g){
+  if(selMedia && markers[selMedia.id]) markers[selMedia.id].getElement().classList.remove("sel");
+  selMedia = null; clearIlha();
+  if(selG && gEls[selG.id]) gEls[selG.id].classList.remove("sel");
+  selG = g;
+  if(gEls[g.id]) gEls[g.id].classList.add("sel");
+  history.replaceState(null,"","#g/"+g.id);
+
+  var i = gallery.indexOf(g);
+  var rows = [];
+  if(g.dt) rows.push(["quando", fmtDate(g.dt)]);
+  if(g.camera) rows.push(["câmera", g.camera]);
+  if(g.dir != null) rows.push(["olhando para", cardinal(g.dir)+" ("+Math.round(g.dir)+"°)"]);
+  if(g.lat != null) rows.push(["onde", fmtCoord(g.lat,g.lon)+(g.approx ? " · aproximada" : "")]);
+
+  panel.innerHTML =
+    '<button class="close" aria-label="fechar">×</button>'+
+    '<figure><img src="gallery/'+g.id+'.jpeg" alt="'+g.id+'"></figure>'+
+    '<div class="body">'+
+      '<p class="eyebrow">álbum da expedição</p>'+
+      '<h3>'+g.id+'</h3>'+
+      (g.desc ? '<p class="story">'+g.desc+'</p>' : '')+
+      '<table>'+rows.map(function(r){
+        return '<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>';}).join("")+'</table>'+
+      '<nav><button data-gnav="-1">‹ anterior</button>'+
+      '<span class="pos">'+(i+1)+' / '+gallery.length+'</span>'+
+      '<button data-gnav="1">seguinte ›</button></nav>'+
+    '</div>';
+  panel.classList.add("on");
+  panel.querySelector(".close").onclick = closePanel;
+  panel.querySelectorAll("[data-gnav]").forEach(function(b){
+    b.onclick = function(){
+      var d = +b.getAttribute("data-gnav");
+      openGallery(gallery[(gallery.indexOf(selG)+d+gallery.length)%gallery.length]);
+    };
+  });
+  panel.scrollTop = 0;
+  if(g.lat != null)
+    fly({center:[g.lon,g.lat], zoom:Math.max(map.getZoom(),12.8),
+         bearing:(g.dir != null ? g.dir : map.getBearing()),
+         offset:[0,90], duration:2000});
 }
 
 /* ---------------- ilhas interactions ---------------- */
@@ -847,6 +943,15 @@ window.addEventListener("resize", function(){
   zvRender();
 });
 if(location.hash === "#zine"){ dismissIntro(false); zvShow(); }
+var hg = location.hash.match(/^#g\/(.+)$/);
+if(hg){
+  dismissIntro(false);
+  setAlbum(true, false);
+  loadGallery().then(function(){
+    var g0 = gallery.find(function(x){ return x.id === hg[1]; });
+    if(g0) openGallery(g0);
+  });
+}
 
 document.addEventListener("keydown", function(e){
   if(zview.classList.contains("on")){
