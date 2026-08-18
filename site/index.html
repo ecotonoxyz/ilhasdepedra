@@ -51,12 +51,7 @@ button{font-family:inherit}
 #basemaps .sep{width:1px;align-self:stretch;margin:4px 2px;background:var(--line)}
 #albumtoggle[aria-pressed="true"]{background:var(--pink)!important;color:#fff!important}
 
-/* gallery markers: no transform styling on the root (maplibre owns it) */
-.gk{width:28px;height:28px;border-radius:50%;border:2px solid #fff;cursor:pointer;
-  background:#000 center/cover no-repeat;box-shadow:0 1px 8px rgba(0,0,0,.6)}
-.gk:hover{border-color:var(--amber)}
-.gk.sel{border-color:var(--pink);box-shadow:0 0 0 3px rgba(255,79,160,.35),0 1px 8px rgba(0,0,0,.6)}
-body.intro-open .gk{visibility:hidden;pointer-events:none}
+/* gallery markers reuse the .mk look (root positioned by maplibre; styling on .face) */
 
 #camctl{position:absolute;right:12px;bottom:calc(max(14px,env(safe-area-inset-bottom)) + 34px);
   z-index:30;display:flex;flex-direction:column;align-items:center;gap:5px;
@@ -407,23 +402,20 @@ var map = new maplibregl.Map({
           "circle-radius":["interpolate",["linear"],["zoom"],
             6,0.7, 9,["+",1.2,["*",1.2,["get","p"]]],
             12,["+",2.4,["*",2,["get","p"]]], 15,7],
-          "circle-color":"rgba(14,9,16,0.72)",
+          "circle-color":"rgba(10,7,12,0.92)",
           "circle-stroke-color":["case",
             ["boolean",["feature-state","sel"],false],"#ff4fa0",
             "#ffffff"],
           "circle-stroke-width":["interpolate",["linear"],["zoom"],
-            8,["case",
+            6,["case",
               ["boolean",["feature-state","sel"],false],2.2,
-              ["boolean",["feature-state","hover"],false],1.8,
-              ["==",["get","conf"],1],0.6, 0],
+              ["boolean",["feature-state","hover"],false],1.8, 0.45],
             10.5,["case",
               ["boolean",["feature-state","sel"],false],2.2,
-              ["boolean",["feature-state","hover"],false],1.8,
-              ["==",["get","conf"],1],1.0, 0],
+              ["boolean",["feature-state","hover"],false],1.8, 1.0],
             12,["case",
               ["boolean",["feature-state","sel"],false],2.2,
-              ["boolean",["feature-state","hover"],false],1.8,
-              ["==",["get","conf"],1],1.4, 0.7]],
+              ["boolean",["feature-state","hover"],false],1.8, 1.4]],
           "circle-stroke-opacity":["case",
             ["boolean",["feature-state","sel"],false],1,
             ["boolean",["feature-state","hover"],false],0.95,0.8]}},
@@ -480,6 +472,11 @@ var map = new maplibregl.Map({
 });
 map.addControl(new maplibregl.AttributionControl({compact:true}), "bottom-right");
 map.touchPitch.enable();
+/* Firefox/macOS fires contextmenu on ctrl+mousedown, killing ctrl+drag
+   rotation before it starts; suppress the menu over the map */
+map.getCanvasContainer().addEventListener("contextmenu", function(e){
+  e.preventDefault();
+});
 
 /* rank-2 cities only appear from z8.2 — handled by text-opacity above */
 
@@ -641,10 +638,13 @@ function loadGallery(){
     items.forEach(function(g){
       if(g.lat == null) return;
       var el = document.createElement("div");
-      el.className = "gk";
-      el.style.backgroundImage = "url('gallery/t/"+g.id+".jpeg')";
+      el.className = "mk";
       el.setAttribute("role","button");
       el.setAttribute("aria-label", g.id);
+      var face = document.createElement("div");
+      face.className = "face";
+      face.style.backgroundImage = "url('gallery/t/"+g.id+".jpeg')";
+      el.appendChild(face);
       el.addEventListener("click", function(e){ e.stopPropagation(); openGallery(g); });
       gEls[g.id] = el;
       gMarkers.push(new maplibregl.Marker({element:el}).setLngLat([g.lon,g.lat]));
@@ -791,9 +791,6 @@ function setBase(b){
   });
   map.setLayoutProperty("base-relevo","visibility", b==="relevo"?"visible":"none");
   map.setLayoutProperty("base-sat","visibility", b==="sat"?"visible":"none");
-  /* dark globules over relief; white pins over forest imagery */
-  map.setPaintProperty("ilhas-dots","circle-color",
-    b==="sat" ? "rgba(255,255,255,0.28)" : "rgba(14,9,16,0.72)");
   map.setPaintProperty("streams","line-color", b==="sat" ? "#e8f06a" : "#ffc95e");
   map.setPaintProperty("rivers","line-color", b==="sat" ? "#e8d94e" : "#ffb14e");
 }
